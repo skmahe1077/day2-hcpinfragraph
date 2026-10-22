@@ -21,9 +21,6 @@ well before you're on stage, not as part of the live demo.
 Everything below runs as real HCP Terraform runs, not local state - make sure
 this is set up in org `Devopstronaut` *before* you're on stage:
 
-- A **Stack** created in the HCP Terraform UI, connected to this repo, config
-  path `terraform/stacks/`. Stacks have no local-apply equivalent - this is
-  the only way to run that part of the demo.
 - Workspace **`infragraph-demo-day2-rotation`** created with **Execution
   Mode = Local** (Settings → General). Local execution is required here so
   the Action can shell out to `ansible-playbook` - a remote HCP Terraform run
@@ -31,6 +28,56 @@ this is set up in org `Devopstronaut` *before* you're on stage:
 - Workspace **`infragraph-demo-vault`** created (backs `terraform/vault-hcp`).
 - `terraform/packer` built+promoted at least once (`scripts/build_and_promote_image.sh`)
   so a "production" AMI channel exists before the Stacks apply.
+
+### Create the Stack (one-time)
+
+1. HCP Terraform UI → pick the **project** that also holds the two workspaces above
+   (keep the Stack and its workspaces in the same project - simplifies which project a
+   provider-credentials variable set needs to target, see below).
+2. New → Stack → choose your GitHub VCS connection (authorize the "HCP Terraform" GitHub
+   App for this repo if it isn't connected yet) → repository
+   `skmahe1077/day2-hcpinfragraph` → branch `main` → **config path `terraform/stacks`**.
+3. Name it. Validation note: the name field only accepts **letters, numbers, dashes, and
+   underscores** - no spaces.
+4. First fetch/plan will likely fail a couple of times on real config issues before it's
+   clean - the ones we actually hit, in order:
+   - Missing `terraform/stacks/.terraform-version` (Stacks need this to pick a Core
+     version - classic workspaces let you set this in the UI, Stacks don't).
+   - Missing/incomplete `.terraform.lock.hcl` at the stack root **and** inside each
+     component module - must include a hash for `linux_amd64` (the TFC agent's
+     platform), not just whatever platform you last ran `terraform init` on locally.
+   - `data` blocks are **not valid** at the top level of a `.tfcomponent.hcl` file - any
+     provider data lookup (e.g. `hcp_packer_artifact`) has to live inside its own
+     component module and get exposed as an output, referenced via
+     `component.<name>.<output>`.
+   - The `orchestrate "auto_approve"` block is deprecated and has real schema
+     drift from what you'd guess: a `check` block's error field is `reason`, not
+     `error_message`, and `context.deployment.name` isn't a thing. Use
+     `deployment_group` + `deployment_auto_approve` instead (already wired up this way
+     in `deployments.tfdeploy.hcl` - non-prod deployments sit in an auto-approving
+     group, prod is left out of it to fall back to manual approval).
+
+### Give the Stack's providers credentials (one-time)
+
+Stacks don't inherit a workspace's ambient process environment - the `aws`/`hcp`
+provider blocks in `components.tfcomponent.hcl` need real `AWS_ACCESS_KEY_ID` /
+`AWS_SECRET_ACCESS_KEY` / `HCP_CLIENT_ID` / `HCP_CLIENT_SECRET` wired in explicitly, or
+every plan fails with provider-auth errors (`hcp` tries an interactive browser OAuth
+login and fails because the TFC agent has no browser; `aws` fails with "no valid
+credential sources").
+
+1. Create a **variable set** (org Settings → Variable sets) with those four values as
+   sensitive, `env`-category variables.
+2. **Apply it to the project** that holds the Stack (`varsets/:id/relationships/projects`
+   if going via API) - note that just setting the varset's *owning* project does **not**
+   apply it anywhere; it's a separate action.
+3. Even with that applied, a Stack doesn't auto-inject the varset's values as process env
+   vars the way a classic workspace does - `deployments.tfdeploy.hcl` has to explicitly
+   pull them via a `store "varset"` block (matched by the variable set's **name**, not
+   its ID) and pass them through as **`ephemeral = true`** deployment inputs (a plain
+   `sensitive` variable isn't enough - store-sourced values are rejected unless the
+   receiving variable opts into `ephemeral`). Already wired up this way in this repo -
+   if you rename the variable set, update the `name` in the `store` block to match.
 
 ### Activate Infragraph (one-time, do this well before you're on stage)
 
