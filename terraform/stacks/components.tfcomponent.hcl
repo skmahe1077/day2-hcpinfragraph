@@ -18,12 +18,17 @@ required_providers {
 
 provider "aws" "this" {
   config {
-    region = var.region
+    region     = var.region
+    access_key = var.aws_access_key_id
+    secret_key = var.aws_secret_access_key
   }
 }
 
 provider "hcp" "this" {
-  config {}
+  config {
+    client_id     = var.hcp_client_id
+    client_secret = var.hcp_client_secret
+  }
 }
 
 # Golden AMI published by the HCP Packer pipeline (see terraform/packer/).
@@ -75,6 +80,26 @@ variable "instance_type" {
 variable "owner" {
   type    = string
   default = "platform-team"
+}
+
+variable "aws_access_key_id" {
+  type      = string
+  sensitive = true
+}
+
+variable "aws_secret_access_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "hcp_client_id" {
+  type      = string
+  sensitive = true
+}
+
+variable "hcp_client_secret" {
+  type      = string
+  sensitive = true
 }
 
 output "instance_id" {
