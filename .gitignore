@@ -16,3 +16,7 @@ packer_cache/
 *.pkrvars.hcl
 
 *.retry
+
+# terraform query -generate-config-out output - a point-in-time snapshot of
+# whatever shadow resource exists when you run it, not meant to be tracked
+terraform/search-shadow/generated_import.tf

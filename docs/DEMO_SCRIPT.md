@@ -153,7 +153,7 @@ Standard plan or above (`Devopstronaut` is on Premium, which includes it).
 4. Give it a few minutes after creating each connection for the first sync to land before
    relying on it live on stage.
 
-## 1. Surface the gap (Terraform Search / Infragraph)
+## 1. Surface the gap (Terraform Search)
 
 ```bash
 ./scripts/create_shadow_resources.sh
@@ -163,11 +163,37 @@ This creates a real EC2 instance, security group, and S3 bucket **outside**
 Terraform entirely - plain AWS CLI calls. Narrate: "this is how most shadow IT
 is born - someone needed something fast."
 
-Then:
-- If your org has resource-inventory / Terraform Search wired to AWS, open
-  HCP Terraform → Infragraph and search for the account - point at the
-  `shadow-reporting-service` instance showing up with no owning workspace.
-- Otherwise, run the local fallback:
+Then run real Terraform Search - this is Terraform 1.14+'s `list` blocks and
+`terraform query` CLI command, a distinct GA feature from Infragraph (it doesn't
+need Infragraph activated/connected at all, just a recent Terraform CLI):
+
+```bash
+cd terraform/search-shadow
+terraform init
+terraform query
+```
+
+Narrate while it runs: this queries **live AWS**, right now, for anything tagged
+the way `create_shadow_resources.sh` tagged the shadow instance - it comes back
+with exactly `shadow-reporting-service` and nothing else, found with zero manual
+console clicking. Then show the other half of the feature - generating real
+import code for it:
+
+```bash
+terraform query -generate-config-out=generated_import.tf
+cat generated_import.tf
+```
+
+Point at the generated `resource "aws_instance"` block (real AMI, subnet,
+security group, tags - all pulled live) and the `import` block under it: "this
+is the output - review it, drop it into your config, `terraform apply`, and
+that shadow resource is governed." Don't actually run that apply live unless
+you want to - it would also need `destroy.sh`'s shadow-resource cleanup path
+reworked, since that currently deletes by AWS tag, not Terraform state.
+`cd ../..` back to the repo root when done.
+
+If you'd rather not touch real Terraform Search live, `shadow_vs_managed_diff.sh`
+is a local, no-dependencies fallback:
 
 ```bash
 ./scripts/shadow_vs_managed_diff.sh

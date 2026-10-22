@@ -32,7 +32,7 @@ org -- not a sandboxed local-only walkthrough.
 
 ## Architecture
 
-![Architecture diagram: GitHub repo connected to HCP Terraform (org Devopstronaut, Stacks + Workspaces + Infragraph graph), which pulls a golden AMI from HCP Packer and drives dev/staging/prod EC2 + Security Groups in AWS eu-west-1; HCP Vault Dedicated and Ansible rotate the webapp DB credential and push it to those instances; a separate untracked Shadow IT box (EC2, Security Group, S3) is surfaced into Infragraph via Terraform Search](docs/images/architecture.png)
+![Architecture diagram: GitHub repo connected to HCP Terraform (org Devopstronaut, Stacks + Workspaces + Infragraph graph), which pulls a golden AMI from HCP Packer and drives dev/staging/prod EC2 + Security Groups in AWS eu-west-1; HCP Vault Dedicated and Ansible rotate the webapp DB credential and push it to those instances; a separate untracked Shadow IT box (EC2, Security Group, S3) discovered live by Terraform Search (terraform query) and also surfaced in the Infragraph resource inventory](docs/images/architecture.png)
 
 <details>
 <summary>Mermaid source (text fallback)</summary>
@@ -84,7 +84,7 @@ mock of any of these pieces.
 
 ## The ILM loop, step by step
 
-### 1. Surface the gap -- Terraform Search / Infragraph
+### 1. Surface the gap -- Terraform Search
 
 ```bash
 ./scripts/create_shadow_resources.sh
@@ -94,8 +94,28 @@ Creates a real EC2 instance (`shadow-reporting-service`), a security group open 
 `0.0.0.0/0`, and an S3 bucket -- all with plain AWS CLI calls, none of it in any Terraform
 state. This is how most shadow IT is actually born: someone needed something fast.
 
-If Terraform Search / Infragraph isn't wired to this AWS account, `shadow_vs_managed_diff.sh`
-is the local fallback -- it lists every running EC2 instance next to what the Stacks state
+Then run real Terraform Search (`terraform` 1.14+'s `list` blocks + `terraform query` --
+distinct from, and not dependent on, Infragraph) against `terraform/search-shadow/`:
+
+```bash
+cd terraform/search-shadow
+terraform init
+terraform query                                            # discover it
+terraform query -generate-config-out=generated_import.tf   # generate import + resource blocks
+cd ../..
+```
+
+`shadow.tfquery.hcl`'s `list` block queries live AWS for running instances tagged
+`Demo=tec4095-infragraph-shadow` -- the exact tag `create_shadow_resources.sh` leaves on
+the shadow instance and nothing else. `terraform query` alone just discovers and prints it;
+`-generate-config-out` is the "bulk import" half of the feature, producing an accurate
+`aws_instance` resource block (AMI, subnet, SG, tags, everything) plus an `import` block
+ready to bring it under Terraform management -- narrate this as the actual remediation step,
+without necessarily running `terraform apply` on it during the talk (that would move it out
+of `shadow_vs_managed_diff.sh`'s and `destroy.sh`'s AWS-CLI-tag-based cleanup path).
+
+If you'd rather not touch real Terraform Search live, `shadow_vs_managed_diff.sh` is a local,
+no-dependencies fallback that lists every running EC2 instance next to what the Stacks state
 knows about and prints the gap:
 
 ```bash
@@ -199,7 +219,8 @@ your laptop:
 - AWS CLI configured with credentials for the target account, region `eu-west-1` (check with
   `aws sts get-caller-identity` -- these need to be valid before running anything that touches
   real infra)
-- `terraform`, `packer`, `vault`, `ansible-playbook` CLIs installed
+- `terraform` (**1.14+**, for `terraform query`/Terraform Search in `terraform/search-shadow/`),
+  `packer`, `vault`, `ansible-playbook` CLIs installed
 - HCP service principal credentials (`HCP_CLIENT_ID` / `HCP_CLIENT_SECRET`) -- used for both the
   HCP Packer registry push and the HCP Vault provider
 
@@ -223,7 +244,7 @@ Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal
 | `terraform/packer/` | `golden-ami.pkr.hcl` -- builds the AMI and registers it in the HCP Packer registry that Stacks consumes via `hcp_packer_artifact` |
 | `terraform/day2-rotation/` | The Terraform Action (`actions.tf`) that rotates the DB credential -- auto-triggered on an SG change, or invoked on demand |
 | `terraform/vault-hcp/` | HCP Vault Dedicated: HVN + cluster (dev tier, public endpoint) + admin token, backing the rotation runbook |
-| `terraform/search-shadow/` | Reserved for a Terraform Search / Infragraph resource-inventory config, if your org has that integration wired to this AWS account |
+| `terraform/search-shadow/` | Real Terraform Search config (`shadow.tfquery.hcl`'s `list` block + `terraform query`) that discovers the shadow EC2 instance by tag and can generate import config for it |
 | `ansible/rotate_credential.yml` | Pushes the rotated credential to every host in `inventory.ini`, renders a live auto-refreshing dashboard page on each, and does a real `httpd` restart; `inventory.ini` defaults to `localhost` so the playbook is runnable before AWS creds/instances exist |
 | `scripts/create_shadow_resources.sh` | Creates the out-of-band "shadow IT" (EC2, SG, S3) that Terraform has never heard of |
 | `scripts/shadow_vs_managed_diff.sh` | Local fallback for the Search/Infragraph gap demo -- diffs running EC2 instances against the Stacks state |
@@ -251,8 +272,13 @@ Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal
   input (the SG data source) actually resolves to a new value -- a no-op `terraform apply`
   will not refire the rotation Action. For a reliable on-stage trigger, invoke the Action
   directly or run `scripts/rotate_credential.sh`, as called out in `docs/DEMO_SCRIPT.md`.
-- `terraform/search-shadow/` currently has no files in it -- it's a placeholder for whatever
-  Terraform Search / resource-inventory config your org eventually points at this AWS account.
+- `terraform query` in `terraform/search-shadow/` needs AWS provider `~> 6.0` -- the `aws_instance`
+  list resource isn't supported on the `~> 5.0` pin used elsewhere in this repo (`terraform/stacks/`,
+  `terraform/day2-rotation/`), so this directory's `.terraform.lock.hcl` deliberately differs
+  from the rest.
+- `terraform query -generate-config-out=generated_import.tf` is gitignored -- it's a
+  point-in-time snapshot keyed to whatever shadow instance ID exists when you run it, and
+  goes stale (wrong instance ID) the moment `destroy.sh`/`create_shadow_resources.sh` cycles.
 - `webapp`'s `key_name` and `ssh_cidr` variables are baked in for the live-push demo path.
   `key_name` is an immutable `aws_instance` argument -- changing either value forces
   **all three** `dev`/`staging`/`prod` instances to be replaced (new instance IDs, new public
