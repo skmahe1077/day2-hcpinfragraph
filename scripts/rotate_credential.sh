@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/_vault_env.sh"
 
 NEW_PASSWORD="rotated-$(openssl rand -hex 8)"
+ROTATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 echo "==> [1/3] Rotating credential in HCP Vault Dedicated ($VAULT_ADDR, secret/infragraph-demo/dbcred)"
 vault kv put secret/infragraph-demo/dbcred \
@@ -18,6 +19,6 @@ vault kv put secret/infragraph-demo/dbcred \
 echo "==> [2/3] Handing off to Ansible to push the new credential to hosts"
 cd "$SCRIPT_DIR/../ansible"
 ansible-playbook -i inventory.ini rotate_credential.yml \
-  -e "new_password=${NEW_PASSWORD}"
+  -e "new_password=${NEW_PASSWORD}" -e "rotated_at=${ROTATED_AT}"
 
 echo "==> [3/3] Rotation complete. New credential is live in HCP Vault and on target hosts."
