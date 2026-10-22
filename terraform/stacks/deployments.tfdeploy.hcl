@@ -35,7 +35,7 @@ deployment "prod" {
 # down to just prod for the demo.
 orchestrate "auto_approve" "non_prod_only" {
   check {
-    condition     = context.deployment.name != "prod"
-    error_message = "prod requires manual approval"
+    condition = context.deployment.name != "prod"
+    reason    = "prod requires manual approval"
   }
 }

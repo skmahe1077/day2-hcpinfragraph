@@ -30,12 +30,16 @@ provider "hcp" "this" {
 # Pulling the "production" channel here is what links Packer provenance
 # into the Infragraph graph: every deployment's AMI traces back to a
 # specific Packer build + the source commit that produced it.
-data "hcp_packer_artifact" "golden_ami" {
-  provider        = provider.hcp.this
-  bucket_name     = "infragraph-demo-webapp"
-  channel_name    = "production"
-  platform        = "aws"
-  region          = var.region
+component "golden_ami" {
+  source = "./components/golden_ami"
+
+  inputs = {
+    region = var.region
+  }
+
+  providers = {
+    hcp = provider.hcp.this
+  }
 }
 
 component "webapp" {
@@ -45,7 +49,7 @@ component "webapp" {
     region        = var.region
     environment   = var.environment
     instance_type = var.instance_type
-    ami_id        = data.hcp_packer_artifact.golden_ami.external_identifier
+    ami_id        = component.golden_ami.external_identifier
     owner         = var.owner
   }
 
