@@ -146,14 +146,18 @@ tracked as a run in HCP Terraform.
 
 By default `ansible/inventory.ini` targets `localhost` (safe default, runnable before AWS
 creds/instances exist). For a genuinely live push -- Ansible connecting over real SSH to the
-actual `dev` instance, rewriting its live page, and restarting `httpd` for real -- the
-`webapp` module attaches an SSH keypair (`key_name`, default `infragraph-demo-ssh`) and opens
-port 22 scoped to a `ssh_cidr` input (never `0.0.0.0/0` -- scope it to the presenter's own IP).
-Point `inventory.ini` at the real `dev` public IP locally (don't commit this -- it's
-instance-specific and goes stale on every replacement) and re-run the script: the page at
-`http://<dev public ip>/` is a dark, auto-refreshing (every 5s) dashboard showing the rotation
-timestamp and a masked credential fingerprint -- refreshing the browser mid-talk is the actual
-proof the rotation reached the running app, not just Vault and a log line.
+actual `dev`/`staging`/`prod` instances, rewriting each one's live page, and restarting
+`httpd` for real -- the `webapp` module attaches an SSH keypair (`key_name`, default
+`infragraph-demo-ssh`) and opens port 22 scoped to a `ssh_cidr` input (never `0.0.0.0/0` --
+scope it to the presenter's own IP) on all three environments' security groups. List all
+three real public IPs in `inventory.ini` locally (don't commit this -- it's instance-specific
+and goes stale on every replacement) and re-run the script: each instance's page is a dark,
+auto-refreshing (every 5s) dashboard showing the rotation timestamp and a masked credential
+fingerprint -- refreshing the browsers mid-talk is the actual proof the same rotated
+credential reached every running environment, not just Vault and a log line. Note this is a
+deliberate widening of scope from the Terraform Action's *trigger*, which still only watches
+the `dev` security group (`data.aws_security_group.webapp_dev` in `actions.tf`) -- the
+rotation itself now fans out to all three, the trigger condition didn't change.
 
 ### 4. Close the loop
 
@@ -220,7 +224,7 @@ Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal
 | `terraform/day2-rotation/` | The Terraform Action (`actions.tf`) that rotates the DB credential -- auto-triggered on an SG change, or invoked on demand |
 | `terraform/vault-hcp/` | HCP Vault Dedicated: HVN + cluster (dev tier, public endpoint) + admin token, backing the rotation runbook |
 | `terraform/search-shadow/` | Reserved for a Terraform Search / Infragraph resource-inventory config, if your org has that integration wired to this AWS account |
-| `ansible/rotate_credential.yml` | Pushes the rotated credential to the target host, renders a live auto-refreshing dashboard page, and does a real `httpd` restart; `inventory.ini` defaults to `localhost` so the playbook is runnable before AWS creds/instances exist |
+| `ansible/rotate_credential.yml` | Pushes the rotated credential to every host in `inventory.ini`, renders a live auto-refreshing dashboard page on each, and does a real `httpd` restart; `inventory.ini` defaults to `localhost` so the playbook is runnable before AWS creds/instances exist |
 | `scripts/create_shadow_resources.sh` | Creates the out-of-band "shadow IT" (EC2, SG, S3) that Terraform has never heard of |
 | `scripts/shadow_vs_managed_diff.sh` | Local fallback for the Search/Infragraph gap demo -- diffs running EC2 instances against the Stacks state |
 | `scripts/build_and_promote_image.sh` | Packer build + HCP Packer registry push (promotion to the `production` channel stays a manual, narrated step) |

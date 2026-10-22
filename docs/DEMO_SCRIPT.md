@@ -82,8 +82,8 @@ credential sources").
 ### Enable the real Day 2 push (one-time, optional but worth it)
 
 By default `rotate_credential.sh` only writes to `localhost` - safe, but it means the
-"proof" of the rotation is just a log line. For a genuinely live push to the real `dev`
-instance:
+"proof" of the rotation is just a log line. For a genuinely live push to all three real
+instances:
 
 1. `aws ec2 create-key-pair --key-name infragraph-demo-ssh --region eu-west-1
    --query 'KeyMaterial' --output text > ~/.ssh/infragraph-demo-ssh.pem && chmod 600
@@ -93,26 +93,33 @@ instance:
    public IP** as a `/32` (`curl -s https://checkip.amazonaws.com`) - never
    `0.0.0.0/0`, that's exactly the insecure pattern the shadow-IT SG demonstrates.
    `key_name` (default `infragraph-demo-ssh`) and `ssh_cidr` are both set on the
-   `webapp` module's `aws_instance`/security group. Push the change - `key_name` is
-   immutable on `aws_instance`, so **this replaces all three** `dev`/`staging`/`prod`
-   instances (new IDs, new public IPs) on the Stack's next apply.
-3. Point `ansible/inventory.ini` at the new `dev` public IP locally, e.g.:
+   `webapp` module's `aws_instance`/security group, applied to all three environments.
+   Push the change - `key_name` is immutable on `aws_instance`, so **this replaces all
+   three** `dev`/`staging`/`prod` instances (new IDs, new public IPs) on the Stack's next
+   apply.
+3. List all three real public IPs in `ansible/inventory.ini` locally, e.g.:
    ```
    [webapp]
    <dev public ip> ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/infragraph-demo-ssh.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+   <staging public ip> ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/infragraph-demo-ssh.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+   <prod public ip> ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/infragraph-demo-ssh.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
    ```
-   Keep this **uncommitted** - it's tied to whatever instance is live right now and goes
-   stale the moment that instance gets replaced (new rehearsal, IP changed, etc.).
-4. Run `./scripts/rotate_credential.sh` - Ansible now connects over real SSH, rewrites
-   `/var/www/html/index.html` with a dark auto-refreshing dashboard (rotation timestamp +
-   masked credential fingerprint, refreshes every 5s, real `Cache-Control: no-store`
-   header so browsers can't mask the update with a stale cache), and does a real
-   `systemctl restart httpd`. No Packer rebuild needed for this - httpd just serves
-   whatever Ansible put on disk; the base AMI doesn't change.
+   Keep this **uncommitted** - it's tied to whichever instances are live right now and goes
+   stale the moment any of them get replaced (new rehearsal, IP changed, etc.). This is a
+   deliberate scope widening beyond the Terraform Action's *trigger*, which still only
+   watches the `dev` security group - the rotation itself now fans out to all three, the
+   trigger condition in `actions.tf` didn't change.
+4. Run `./scripts/rotate_credential.sh` - Ansible now connects over real SSH to all three
+   hosts, rewrites each one's `/var/www/html/index.html` with a dark auto-refreshing
+   dashboard (rotation timestamp + masked credential fingerprint, refreshes every 5s, real
+   `Cache-Control: no-store` header so browsers can't mask the update with a stale cache),
+   and does a real `systemctl restart httpd` on each. No Packer rebuild needed for this -
+   httpd just serves whatever Ansible put on disk; the base AMI doesn't change.
 
-Have `http://<dev public ip>/` open in a browser tab **before** you start step 3 live -
-since the page auto-refreshes, you don't even need to touch the browser after running the
-script on stage.
+Have `http://<dev public ip>/`, `http://<staging public ip>/`, and
+`http://<prod public ip>/` open in three browser tabs **before** you start step 3 live -
+since each page auto-refreshes, you don't even need to touch the browsers after running
+the script on stage; all three update in sync.
 
 ### Activate Infragraph (one-time, do this well before you're on stage)
 
@@ -235,14 +242,14 @@ Show, in order:
 1. **HCP Vault** now holds a freshly rotated credential - `source scripts/_vault_env.sh`
    then `vault kv get secret/infragraph-demo/dbcred` (or check it live in the
    HCP Vault UI).
-2. **The live page** - flip to the browser tab already open on `http://<dev public
-   ip>/` (see "Enable the real Day 2 push" above). It auto-refreshes every 5s, so the
-   rotation timestamp and masked credential fingerprint update on their own within
-   seconds of the script finishing - no need to touch the browser. This is the actual
-   payoff: a real credential rotated in a real Vault cluster, pushed over real SSH, and
-   reflected on the real running app. (If you're on the `localhost` safe-default
-   inventory instead, narrate the equivalent local file write at
-   `/tmp/infragraph-demo-webapp/db-credential.env`.)
+2. **The live pages** - flip to the three browser tabs already open on the `dev`,
+   `staging`, and `prod` public IPs (see "Enable the real Day 2 push" above). Each
+   auto-refreshes every 5s, so the rotation timestamp and masked credential fingerprint
+   update on their own, in sync across all three, within seconds of the script finishing -
+   no need to touch any browser. This is the actual payoff: one real credential rotated in
+   a real Vault cluster, pushed over real SSH, and reflected identically on every running
+   environment. (If you're on the `localhost` safe-default inventory instead, narrate the
+   equivalent local file write at `/tmp/infragraph-demo-webapp/db-credential.env`.)
 3. Back in Infragraph: the Action's definition and the `day2-rotation` workspace's
    `terraform apply` run are visible on the graph attached to the same resources as the
    Stacks deployment - Day 2 ops now has the same ownership and audit trail as Day 1
