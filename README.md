@@ -32,6 +32,11 @@ org -- not a sandboxed local-only walkthrough.
 
 ## Architecture
 
+![Architecture diagram: GitHub repo connected to HCP Terraform (org Devopstronaut, Stacks + Workspaces + Infragraph graph), which pulls a golden AMI from HCP Packer and drives dev/staging/prod EC2 + Security Groups in AWS eu-west-1; HCP Vault Dedicated and Ansible rotate the webapp DB credential and push it to those instances; a separate untracked Shadow IT box (EC2, Security Group, S3) is surfaced into Infragraph via Terraform Search](docs/images/architecture.png)
+
+<details>
+<summary>Mermaid source (text fallback)</summary>
+
 ```mermaid
 flowchart TB
     subgraph HCPTF["HCP Terraform -- org: Devopstronaut"]
@@ -70,6 +75,8 @@ flowchart TB
     Packer -.-> Infragraph
     ActionWS -.-> Infragraph
 ```
+
+</details>
 
 Everything above is real: the EC2 instances, the security groups, the S3 bucket, the HCP Vault
 Dedicated cluster (billed hourly from creation), and every HCP Terraform run. There is no local
