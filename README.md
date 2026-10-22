@@ -115,8 +115,9 @@ manual step, narrated live -- that's the moment the `hcp_packer_artifact` data s
 
 The Stack itself (`terraform/stacks/`) has **no local-apply path** -- it's triggered from the
 HCP Terraform UI against one component (`components/webapp`) and three deployments
-(`deployments.tfdeploy.hcl`: `dev`, `staging`, `prod`). `prod` carries an `orchestrate
-"auto_approve"` check requiring manual approval -- the policy/approval gate from the talk,
+(`deployments.tfdeploy.hcl`: `dev`, `staging`, `prod`). `dev`/`staging` sit in an
+auto-approving `deployment_group`; `prod` is left out of it, so it falls back to HCP
+Terraform's default manual-approval group -- the policy/approval gate from the talk,
 scoped to just the environment that needs it.
 
 ### 3. Codify Day 2 ops -- Terraform Actions + HCP Vault Dedicated + Ansible
