@@ -11,8 +11,8 @@
 # default (manual-approval) group for it.
 deployment_auto_approve "non_prod" {
   check {
-    condition = true
-    reason    = "non-prod deployments auto-approve"
+    condition = context.plan.applyable
+    reason    = "non-prod deployments auto-approve any valid plan"
   }
 }
 
