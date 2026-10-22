@@ -32,6 +32,38 @@ this is set up in org `Devopstronaut` *before* you're on stage:
 - `terraform/packer` built+promoted at least once (`scripts/build_and_promote_image.sh`)
   so a "production" AMI channel exists before the Stacks apply.
 
+### Activate Infragraph (one-time, do this well before you're on stage)
+
+Infragraph is a separate HCP product from HCP Terraform/Stacks - having the Stack and
+workspaces running does **not** populate it. It needs to be activated and given explicit
+connections. Requires: Admin/Owner role on the HCP org, and the HCP Terraform org on a
+Standard plan or above (`Devopstronaut` is on Premium, which includes it).
+
+1. **Create a team + token in HCP Terraform** for the connection: org `Devopstronaut` →
+   Settings → Teams → create a team (e.g. `infragraph-connection`) → grant it
+   **`read-projects`** and **`read-workspaces`** org-access → generate a team API token.
+   (A team with no org-access grants can be created but is useless here - the connection
+   will authenticate fine and still see nothing until those two permissions are set.)
+2. **Activate Infragraph**: `portal.cloud.hashicorp.com` → Organization dashboard →
+   Infragraph section → Activate, pasting in the team token from step 1.
+3. **Add connections** (Infragraph → Resource graph → Overview → Create Connection) -
+   each one is what actually populates the graph:
+   - **HCP Terraform** - same team token, pulls in the Stack + both workspaces + their runs.
+   - **AWS** - click "View Terraform module in Registry" to get a generated
+     `hashicorp/infragraph-connector-permissions/aws` module block (OIDC-federated IAM
+     role, read-only `List*`/`Describe*`/`Get*` permissions, no write access). Apply it
+     against the target account with a real AWS session. Watch for this gotcha: if an
+     OIDC provider for `idp.hashicorp.com/oidc/...` already exists in the account (e.g.
+     from an earlier attempt), the apply fails with `EntityAlreadyExists` - `terraform
+     import` the existing provider ARN
+     (`aws_iam_openid_connect_provider.hcp_infragraph`) instead of recreating it, then
+     re-apply; expect it to correct a stale `client_id_list`/`thumbprint_list` on that
+     provider as part of the same apply. Scope the connection to "Specific Accounts" with
+     the target account ID for a single-account demo.
+   - **HCP Packer** - so the AMI/build lineage shows up on the graph.
+4. Give it a few minutes after creating each connection for the first sync to land before
+   relying on it live on stage.
+
 ## 1. Surface the gap (Terraform Search / Infragraph)
 
 ```bash
