@@ -34,6 +34,14 @@ resource "aws_security_group" "webapp" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "SSH (Day 2 ops demo - Ansible credential push)"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_cidr]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -49,6 +57,7 @@ resource "aws_instance" "webapp" {
   instance_type          = var.instance_type
   subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.webapp.id]
+  key_name               = var.key_name
 
   tags = local.tags
 }

@@ -56,6 +56,7 @@ component "webapp" {
     instance_type = var.instance_type
     ami_id        = component.golden_ami.external_identifier
     owner         = var.owner
+    ssh_cidr      = var.ssh_cidr
   }
 
   providers = {
@@ -80,6 +81,11 @@ variable "instance_type" {
 variable "owner" {
   type    = string
   default = "platform-team"
+}
+
+variable "ssh_cidr" {
+  description = "CIDR allowed to SSH into the webapp instances - scope to the presenter's IP"
+  type        = string
 }
 
 variable "aws_access_key_id" {
