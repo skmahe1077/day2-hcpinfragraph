@@ -85,21 +85,25 @@ variable "owner" {
 variable "aws_access_key_id" {
   type      = string
   sensitive = true
+  ephemeral = true
 }
 
 variable "aws_secret_access_key" {
   type      = string
   sensitive = true
+  ephemeral = true
 }
 
 variable "hcp_client_id" {
   type      = string
   sensitive = true
+  ephemeral = true
 }
 
 variable "hcp_client_secret" {
   type      = string
   sensitive = true
+  ephemeral = true
 }
 
 output "instance_id" {
