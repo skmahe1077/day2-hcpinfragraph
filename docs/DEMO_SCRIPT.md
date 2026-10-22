@@ -79,6 +79,41 @@ credential sources").
    receiving variable opts into `ephemeral`). Already wired up this way in this repo -
    if you rename the variable set, update the `name` in the `store` block to match.
 
+### Enable the real Day 2 push (one-time, optional but worth it)
+
+By default `rotate_credential.sh` only writes to `localhost` - safe, but it means the
+"proof" of the rotation is just a log line. For a genuinely live push to the real `dev`
+instance:
+
+1. `aws ec2 create-key-pair --key-name infragraph-demo-ssh --region eu-west-1
+   --query 'KeyMaterial' --output text > ~/.ssh/infragraph-demo-ssh.pem && chmod 600
+   ~/.ssh/infragraph-demo-ssh.pem` - the golden AMI's own build-time keypair is deleted by
+   Packer after the build, so a new persistent one is needed for Ansible to connect.
+2. In `deployments.tfdeploy.hcl`, set `ssh_cidr` on each deployment to **your current
+   public IP** as a `/32` (`curl -s https://checkip.amazonaws.com`) - never
+   `0.0.0.0/0`, that's exactly the insecure pattern the shadow-IT SG demonstrates.
+   `key_name` (default `infragraph-demo-ssh`) and `ssh_cidr` are both set on the
+   `webapp` module's `aws_instance`/security group. Push the change - `key_name` is
+   immutable on `aws_instance`, so **this replaces all three** `dev`/`staging`/`prod`
+   instances (new IDs, new public IPs) on the Stack's next apply.
+3. Point `ansible/inventory.ini` at the new `dev` public IP locally, e.g.:
+   ```
+   [webapp]
+   <dev public ip> ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/infragraph-demo-ssh.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+   ```
+   Keep this **uncommitted** - it's tied to whatever instance is live right now and goes
+   stale the moment that instance gets replaced (new rehearsal, IP changed, etc.).
+4. Run `./scripts/rotate_credential.sh` - Ansible now connects over real SSH, rewrites
+   `/var/www/html/index.html` with a dark auto-refreshing dashboard (rotation timestamp +
+   masked credential fingerprint, refreshes every 5s, real `Cache-Control: no-store`
+   header so browsers can't mask the update with a stale cache), and does a real
+   `systemctl restart httpd`. No Packer rebuild needed for this - httpd just serves
+   whatever Ansible put on disk; the base AMI doesn't change.
+
+Have `http://<dev public ip>/` open in a browser tab **before** you start step 3 live -
+since the page auto-refreshes, you don't even need to touch the browser after running the
+script on stage.
+
 ### Activate Infragraph (one-time, do this well before you're on stage)
 
 Infragraph is a separate HCP product from HCP Terraform/Stacks - having the Stack and
@@ -196,15 +231,26 @@ your org), or just run the underlying script directly:
 ../../scripts/rotate_credential.sh
 ```
 
-Show:
-1. HCP Vault now holds a freshly rotated credential - `source scripts/_vault_env.sh`
+Show, in order:
+1. **HCP Vault** now holds a freshly rotated credential - `source scripts/_vault_env.sh`
    then `vault kv get secret/infragraph-demo/dbcred` (or check it live in the
-   HCP Vault UI)
-2. Ansible pushed it to the target host (`/tmp/infragraph-demo-webapp/db-credential.env`
-   on the dev instance, or localhost if you're running the safe default inventory)
-3. Back in Infragraph: the Action run shows up attached to the same resource
-   graph as the Stacks deployment - Day 2 ops now has the same ownership and
-   audit trail as Day 1 provisioning.
+   HCP Vault UI).
+2. **The live page** - flip to the browser tab already open on `http://<dev public
+   ip>/` (see "Enable the real Day 2 push" above). It auto-refreshes every 5s, so the
+   rotation timestamp and masked credential fingerprint update on their own within
+   seconds of the script finishing - no need to touch the browser. This is the actual
+   payoff: a real credential rotated in a real Vault cluster, pushed over real SSH, and
+   reflected on the real running app. (If you're on the `localhost` safe-default
+   inventory instead, narrate the equivalent local file write at
+   `/tmp/infragraph-demo-webapp/db-credential.env`.)
+3. Back in Infragraph: the Action's definition and the `day2-rotation` workspace's
+   `terraform apply` run are visible on the graph attached to the same resources as the
+   Stacks deployment - Day 2 ops now has the same ownership and audit trail as Day 1
+   provisioning. Caveat: since this specific rotation went through the direct script
+   rather than a tracked Action invocation (Actions-on-demand isn't available for this
+   org), it won't add a *new* edge to the graph for this exact run - don't promise a
+   live-updating graph edge on stage, the existing Action/run nodes are enough to make
+   the point.
 
 ## 4. Close the loop
 

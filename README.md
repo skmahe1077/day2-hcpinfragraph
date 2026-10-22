@@ -66,7 +66,7 @@ flowchart TB
     Dev -. "security_group_id\n(read-only data source)" .-> ActionWS
     ActionWS -->|after_update action_trigger\nor on-demand| Vault
     Vault -->|rotated credential| Ansible
-    Ansible -->|pushes credential,\nrestarts app| Dev
+    Ansible -->|pushes credential over SSH,\nreal httpd restart,\nrenders live dashboard| Dev
 
     VaultWS -.->|provisions + admin token| Vault
 
@@ -144,6 +144,17 @@ then hands off to Ansible (`ansible/rotate_credential.yml`) to push it to the ta
 restart the app. What used to be a wiki page is now version-controlled, peer-reviewed, and
 tracked as a run in HCP Terraform.
 
+By default `ansible/inventory.ini` targets `localhost` (safe default, runnable before AWS
+creds/instances exist). For a genuinely live push -- Ansible connecting over real SSH to the
+actual `dev` instance, rewriting its live page, and restarting `httpd` for real -- the
+`webapp` module attaches an SSH keypair (`key_name`, default `infragraph-demo-ssh`) and opens
+port 22 scoped to a `ssh_cidr` input (never `0.0.0.0/0` -- scope it to the presenter's own IP).
+Point `inventory.ini` at the real `dev` public IP locally (don't commit this -- it's
+instance-specific and goes stale on every replacement) and re-run the script: the page at
+`http://<dev public ip>/` is a dark, auto-refreshing (every 5s) dashboard showing the rotation
+timestamp and a masked credential fingerprint -- refreshing the browser mid-talk is the actual
+proof the rotation reached the running app, not just Vault and a log line.
+
 ### 4. Close the loop
 
 Back in the HCP Terraform UI, Infragraph's graph view is the payoff frame: the shadow resource
@@ -209,7 +220,7 @@ Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal
 | `terraform/day2-rotation/` | The Terraform Action (`actions.tf`) that rotates the DB credential -- auto-triggered on an SG change, or invoked on demand |
 | `terraform/vault-hcp/` | HCP Vault Dedicated: HVN + cluster (dev tier, public endpoint) + admin token, backing the rotation runbook |
 | `terraform/search-shadow/` | Reserved for a Terraform Search / Infragraph resource-inventory config, if your org has that integration wired to this AWS account |
-| `ansible/rotate_credential.yml` | Pushes the rotated credential to the target host and restarts the app; `inventory.ini` defaults to `localhost` so the playbook is runnable before AWS creds/instances exist |
+| `ansible/rotate_credential.yml` | Pushes the rotated credential to the target host, renders a live auto-refreshing dashboard page, and does a real `httpd` restart; `inventory.ini` defaults to `localhost` so the playbook is runnable before AWS creds/instances exist |
 | `scripts/create_shadow_resources.sh` | Creates the out-of-band "shadow IT" (EC2, SG, S3) that Terraform has never heard of |
 | `scripts/shadow_vs_managed_diff.sh` | Local fallback for the Search/Infragraph gap demo -- diffs running EC2 instances against the Stacks state |
 | `scripts/build_and_promote_image.sh` | Packer build + HCP Packer registry push (promotion to the `production` channel stays a manual, narrated step) |
@@ -238,3 +249,12 @@ Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal
   directly or run `scripts/rotate_credential.sh`, as called out in `docs/DEMO_SCRIPT.md`.
 - `terraform/search-shadow/` currently has no files in it -- it's a placeholder for whatever
   Terraform Search / resource-inventory config your org eventually points at this AWS account.
+- `webapp`'s `key_name` and `ssh_cidr` variables are baked in for the live-push demo path.
+  `key_name` is an immutable `aws_instance` argument -- changing either value forces
+  **all three** `dev`/`staging`/`prod` instances to be replaced (new instance IDs, new public
+  IPs) on the next apply, not just a config update. If your presenter IP changes between
+  rehearsal and the real talk, update `ssh_cidr` in `deployments.tfdeploy.hcl`, expect another
+  replacement, and grab the new `dev` IP for `inventory.ini` again.
+- The locally-edited `ansible/inventory.ini` (pointed at a real instance IP) should stay
+  **uncommitted** -- it's specific to whichever instance is currently live and will be wrong
+  the moment that instance gets replaced.
