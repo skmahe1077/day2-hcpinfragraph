@@ -216,6 +216,9 @@ your laptop:
   - Workspace `infragraph-demo-day2-rotation` created with Execution Mode = Local
   - Workspace `infragraph-demo-vault` created (any execution mode -- no local tool
     dependencies)
+  - Workspace `infragraph-demo-search-shadow` created (remote execution; backs
+    `terraform/search-shadow/` so Terraform Search runs show up in the HCP Terraform UI's
+    Search & Import page, not just the local CLI)
 - AWS CLI configured with credentials for the target account, region `eu-west-1` (check with
   `aws sts get-caller-identity` -- these need to be valid before running anything that touches
   real infra)

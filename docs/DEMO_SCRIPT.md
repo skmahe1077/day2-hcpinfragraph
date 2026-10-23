@@ -26,6 +26,9 @@ this is set up in org `Devopstronaut` *before* you're on stage:
   the Action can shell out to `ansible-playbook` - a remote HCP Terraform run
   sandbox can't reach it.
 - Workspace **`infragraph-demo-vault`** created (backs `terraform/vault-hcp`).
+- Workspace **`infragraph-demo-search-shadow`** created, remote execution (backs
+  `terraform/search-shadow/` - without this, `terraform query` only runs as a local CLI
+  command and nothing shows up in HCP Terraform's Search & Import UI page).
 - `terraform/packer` built+promoted at least once (`scripts/build_and_promote_image.sh`)
   so a "production" AMI channel exists before the Stacks apply.
 
