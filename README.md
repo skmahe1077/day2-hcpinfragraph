@@ -157,16 +157,20 @@ terraform apply -var="security_group_id=<sg id from the dev deployment's output>
   is still attached to it, and the whole apply fails) and re-applying `day2-rotation` with
   the new SG id genuinely fires the trigger -- the apply log shows `Action complete:
   action.local_command.rotate_db_credential (triggered by terraform_data.trigger_anchor)`.
-- **On demand** -- in principle, invokable directly from the HCP Terraform UI/CLI if
-  Actions-on-demand is enabled for your org. In practice, for *this* action, don't expect
-  it to show up there even when it is: it only fires via the lifecycle trigger above, and
-  empirically (tested against this org) a trigger-bound action stays absent from the
-  workspace's Actions page/`terraform-actions` API regardless of execution mode or whether
-  it has actually fired. The architecture is a dead end here anyway -- Actions-on-demand
-  needing `remote` execution and this action needing `local` execution (to reach
-  `ansible-playbook`, your SSH key, and local AWS/Vault creds) are mutually exclusive for
-  this particular runbook. Treat the run log as the real proof, not the Actions UI. The
-  always-available fallback is running the underlying runbook yourself:
+- **On demand** -- via Terraform's own CLI `-invoke` flag, a first-class documented feature
+  distinct from the lifecycle trigger: `terraform apply
+  -invoke=action.local_command.rotate_db_credential -var="security_group_id=<dev sg id>"`
+  skips planning/applying everything else in the config and runs only the named action
+  (apply log: `Action started: action.local_command.rotate_db_credential (triggered by
+  CLI)`). Don't expect this to show up in the HCP Terraform UI's Actions page even though
+  it ran -- empirically tested (trigger-fired, CLI-`-invoke`-fired, local execution, remote
+  execution, all four combinations against this org): a trigger-bound action never appears
+  in the workspace's Actions page/`terraform-actions` API, regardless of how it's invoked.
+  The architecture is a dead end here anyway -- the Actions page's on-demand invocation
+  needs `remote` execution, but this action needs `local` execution (to reach
+  `ansible-playbook`, your SSH key, and local AWS/Vault creds) -- mutually exclusive for
+  this particular runbook. Treat the apply log as the real proof, not the Actions UI. The
+  lowest-ceremony fallback is just running the underlying runbook yourself:
 
 ```bash
 ./scripts/rotate_credential.sh

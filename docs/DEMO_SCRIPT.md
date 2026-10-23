@@ -284,7 +284,7 @@ terraform_data.trigger_anchor)`.
 The `terraform_data.trigger_anchor` resource only fires the `after_update`
 action_trigger when its tracked input actually changes (e.g. the SG's
 `webapp_dev` data source resolves to a different value) - a no-op `apply`
-won't refire it. Two ways to demo it:
+won't refire it. Three ways to demo it, in order of how much ceremony you want:
 
 - **The real trigger, on purpose**: bump the SG's name in
   `terraform/stacks/components/webapp/main.tf` (`-sg-v2` -> `-sg-v3`, etc.) -
@@ -294,8 +294,24 @@ won't refire it. Two ways to demo it:
   apply is what genuinely fires the trigger - it's a heavier lift (another
   live infra change mid-talk) but it's the actual mechanism, not a
   substitute for it.
+- **On-demand via Terraform's own CLI** (recommended default for stage) -
+  `-invoke` is a first-class, documented Terraform feature, distinct from
+  both the lifecycle trigger and from just calling the bash script
+  yourself. It skips planning/applying everything else in the config and
+  runs only the named action:
+
+```bash
+terraform apply -invoke=action.local_command.rotate_db_credential \
+  -var="security_group_id=<dev sg id>" -auto-approve
+```
+
+  The apply log clearly labels it `Action started:
+  action.local_command.rotate_db_credential (triggered by CLI)` - a clean
+  "yes, I'm deliberately invoking this Day 2 action right now" moment
+  without needing to replace real infrastructure first.
 - **Lower-ceremony fallback**: just run the underlying script directly -
-  same end result (Vault rotation + Ansible push), skips the live SG replace:
+  identical end result (Vault rotation + Ansible push), useful if you don't
+  want to type out the full `-invoke` address on stage:
 
 ```bash
 ../../scripts/rotate_credential.sh
@@ -303,8 +319,9 @@ won't refire it. Two ways to demo it:
 
 Don't bother hunting for this action in the workspace's Actions page or
 trying "Actions-on-demand" from the UI - tested directly against this org
-and it doesn't show up there, triggered or not, local execution or remote.
-The architecture is a dead end for this specific action anyway: the Actions
+(trigger-fired, CLI `-invoke`-fired, local execution, remote execution, all
+four combinations) and it never shows up there. The architecture is a dead
+end for this specific action anyway: the Actions
 page's on-demand invocation needs `remote` execution, but this action needs
 `local` execution to reach `ansible-playbook`/your SSH key/local AWS+Vault
 creds - mutually exclusive requirements for this one runbook. The apply log
