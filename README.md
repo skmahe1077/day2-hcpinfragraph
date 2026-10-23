@@ -64,7 +64,7 @@ flowchart TB
     Stack --> Prod
 
     Dev -. "security_group_id\n(read-only data source)" .-> ActionWS
-    ActionWS -->|after_update action_trigger\nor on-demand| Vault
+    ActionWS -->|after_update action_trigger\n(verified live) or direct script| Vault
     Vault -->|rotated credential| Ansible
     Ansible -->|pushes credential over SSH,\nreal httpd restart,\nrenders live dashboard| Dev
 
@@ -151,9 +151,22 @@ terraform apply -var="security_group_id=<sg id from the dev deployment's output>
 
 - **Automatically** -- a `terraform_data.trigger_anchor` resource reads the dev security
   group (read-only `data.aws_security_group.webapp_dev`) and fires the `after_update`
-  `action_trigger` whenever that SG actually changes.
-- **On demand** -- run directly from the HCP Terraform UI/CLI (if Actions-on-demand is enabled
-  for your org), or just run the underlying runbook yourself:
+  `action_trigger` whenever that SG actually changes. Verified live: forcing the `webapp`
+  SG to be replaced (see `aws_security_group.webapp`'s `lifecycle { create_before_destroy
+  = true }` -- required, since without it AWS rejects deleting the old SG while an instance
+  is still attached to it, and the whole apply fails) and re-applying `day2-rotation` with
+  the new SG id genuinely fires the trigger -- the apply log shows `Action complete:
+  action.local_command.rotate_db_credential (triggered by terraform_data.trigger_anchor)`.
+- **On demand** -- in principle, invokable directly from the HCP Terraform UI/CLI if
+  Actions-on-demand is enabled for your org. In practice, for *this* action, don't expect
+  it to show up there even when it is: it only fires via the lifecycle trigger above, and
+  empirically (tested against this org) a trigger-bound action stays absent from the
+  workspace's Actions page/`terraform-actions` API regardless of execution mode or whether
+  it has actually fired. The architecture is a dead end here anyway -- Actions-on-demand
+  needing `remote` execution and this action needing `local` execution (to reach
+  `ansible-playbook`, your SSH key, and local AWS/Vault creds) are mutually exclusive for
+  this particular runbook. Treat the run log as the real proof, not the Actions UI. The
+  always-available fallback is running the underlying runbook yourself:
 
 ```bash
 ./scripts/rotate_credential.sh
@@ -219,6 +232,12 @@ your laptop:
   - Workspace `infragraph-demo-search-shadow` created (remote execution; backs
     `terraform/search-shadow/` so Terraform Search runs show up in the HCP Terraform UI's
     Search & Import page, not just the local CLI)
+  - **Put the Stack and all three workspaces in the same HCP Terraform project.** New
+    workspaces/Stacks created without an explicit project land in whichever one is your
+    org's default, and nothing stops them drifting apart later (a UI edit, a scripted
+    `PATCH`) -- if they split across projects, a project-scoped variable set (like the one
+    backing the Stack's `aws`/`hcp` provider credentials) silently stops covering the
+    stragglers, and you'll lose track of which workspace is where.
 - AWS CLI configured with credentials for the target account, region `eu-west-1` (check with
   `aws sts get-caller-identity` -- these need to be valid before running anything that touches
   real infra)
@@ -273,8 +292,12 @@ Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal
   state with the same care as any other secret-bearing state.
 - `terraform_data.trigger_anchor`'s `after_update action_trigger` only fires when its tracked
   input (the SG data source) actually resolves to a new value -- a no-op `terraform apply`
-  will not refire the rotation Action. For a reliable on-stage trigger, invoke the Action
-  directly or run `scripts/rotate_credential.sh`, as called out in `docs/DEMO_SCRIPT.md`.
+  will not refire the rotation Action. To force a reliable on-stage firing, bump the SG's
+  name in `terraform/stacks/components/webapp/main.tf` (e.g. `-sg-v2` -> `-sg-v3`) so AWS
+  replaces it with a new id, push, approve the Stack apply, then re-apply `day2-rotation`
+  with that new id -- or just run `scripts/rotate_credential.sh` directly, as called out in
+  `docs/DEMO_SCRIPT.md`, which is the lower-ceremony option if you don't need the literal
+  trigger-fired-by-an-SG-change moment on stage.
 - `terraform query` in `terraform/search-shadow/` needs AWS provider `~> 6.0` -- the `aws_instance`
   list resource isn't supported on the `~> 5.0` pin used elsewhere in this repo (`terraform/stacks/`,
   `terraform/day2-rotation/`), so this directory's `.terraform.lock.hcl` deliberately differs
@@ -291,3 +314,17 @@ Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal
 - The locally-edited `ansible/inventory.ini` (pointed at a real instance IP) should stay
   **uncommitted** -- it's specific to whichever instance is currently live and will be wrong
   the moment that instance gets replaced.
+- `aws_security_group.webapp` needs `lifecycle { create_before_destroy = true }` -- without
+  it, any change that forces the SG to be replaced (like the name) makes Terraform try to
+  *destroy* the old SG before creating the new one, AWS rejects that with
+  `DependencyViolation` (the instance is still attached), and the whole deployment fails
+  without ever creating the replacement. Hit this for real forcing the trigger-firing test
+  above; it's now fixed in the module, but worth remembering if you touch this resource
+  again. With the fix, replacing the SG updates the instance's `vpc_security_group_ids`
+  in-place -- the instance itself doesn't get replaced, only `key_name`/`ssh_cidr` changes
+  force that.
+- Workspace/project drift is real, not theoretical -- `infragraph-demo-day2-rotation` ended
+  up in a different HCP Terraform project than the Stack and the other two workspaces partway
+  through this demo's setup (cause unclear -- possibly a UI edit while exploring Actions
+  settings). If something that used to work stops seeing credentials/variable sets, check
+  each workspace's project assignment before assuming the config is wrong.

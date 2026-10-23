@@ -31,6 +31,11 @@ this is set up in org `Devopstronaut` *before* you're on stage:
   command and nothing shows up in HCP Terraform's Search & Import UI page).
 - `terraform/packer` built+promoted at least once (`scripts/build_and_promote_image.sh`)
   so a "production" AMI channel exists before the Stacks apply.
+- **Double-check all three workspaces and the Stack are in the same HCP Terraform
+  project.** This drifted mid-rehearsal once already - `infragraph-demo-day2-rotation` ended
+  up in a different project than the others, and the symptom was confusing ("the workspace
+  isn't even showing up") rather than an obvious error. Settings → General on each workspace
+  shows its project.
 
 ### Create the Stack (one-time)
 
@@ -263,19 +268,40 @@ from your machine.
 
 Narrate: this is a credential-rotation runbook that used to be a wiki page -
 now it's a Terraform Action (`actions.tf`), version-controlled, peer-reviewed,
-tracked as a run in HCP Terraform, and triggerable either automatically (on
-an SG change) or on demand.
+tracked as a run in HCP Terraform, and triggerable automatically on an SG
+change - verified live: this genuinely fires. The apply log shows `Action
+complete: action.local_command.rotate_db_credential (triggered by
+terraform_data.trigger_anchor)`.
 
 The `terraform_data.trigger_anchor` resource only fires the `after_update`
 action_trigger when its tracked input actually changes (e.g. the SG's
 `webapp_dev` data source resolves to a different value) - a no-op `apply`
-won't refire it. For a reliable on-stage trigger, either invoke the action
-directly from the HCP Terraform UI/CLI (if Actions-on-demand is enabled for
-your org), or just run the underlying script directly:
+won't refire it. Two ways to demo it:
+
+- **The real trigger, on purpose**: bump the SG's name in
+  `terraform/stacks/components/webapp/main.tf` (`-sg-v2` -> `-sg-v3`, etc.) -
+  this forces AWS to replace the SG (new id), push, approve the Stack's
+  apply (dev/staging auto-approve, prod needs the click), grab the new dev
+  SG id, then `terraform apply -var="security_group_id=<new id>"` here. That
+  apply is what genuinely fires the trigger - it's a heavier lift (another
+  live infra change mid-talk) but it's the actual mechanism, not a
+  substitute for it.
+- **Lower-ceremony fallback**: just run the underlying script directly -
+  same end result (Vault rotation + Ansible push), skips the live SG replace:
 
 ```bash
 ../../scripts/rotate_credential.sh
 ```
+
+Don't bother hunting for this action in the workspace's Actions page or
+trying "Actions-on-demand" from the UI - tested directly against this org
+and it doesn't show up there, triggered or not, local execution or remote.
+The architecture is a dead end for this specific action anyway: the Actions
+page's on-demand invocation needs `remote` execution, but this action needs
+`local` execution to reach `ansible-playbook`/your SSH key/local AWS+Vault
+creds - mutually exclusive requirements for this one runbook. The apply log
+(either path above) is the real, reliable proof - don't promise the
+audience an Actions-tab moment that isn't there.
 
 Show, in order:
 1. **HCP Vault** now holds a freshly rotated credential - `source scripts/_vault_env.sh`
@@ -292,11 +318,7 @@ Show, in order:
 3. Back in Infragraph: the Action's definition and the `day2-rotation` workspace's
    `terraform apply` run are visible on the graph attached to the same resources as the
    Stacks deployment - Day 2 ops now has the same ownership and audit trail as Day 1
-   provisioning. Caveat: since this specific rotation went through the direct script
-   rather than a tracked Action invocation (Actions-on-demand isn't available for this
-   org), it won't add a *new* edge to the graph for this exact run - don't promise a
-   live-updating graph edge on stage, the existing Action/run nodes are enough to make
-   the point.
+   provisioning.
 
 ## 4. Close the loop
 
