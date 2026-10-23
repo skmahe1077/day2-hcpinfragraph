@@ -1,4 +1,11 @@
 terraform {
+  cloud {
+    organization = "Devopstronaut"
+    workspaces {
+      name = "infragraph-demo-search-shadow"
+    }
+  }
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
