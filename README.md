@@ -210,10 +210,15 @@ your laptop:
   `terraform/stacks/`; plans/applies for dev/staging/prod happen there, not via local
   `terraform` commands.
 - **day2-rotation** (`terraform/day2-rotation/actions.tf`) uses a `cloud` block targeting
-  workspace `infragraph-demo-day2-rotation` in org `Devopstronaut` -- running `terraform apply`
-  locally still creates a real, visible run in that workspace. That workspace's **Execution
-  Mode is set to Local**: the Action shells out to `ansible-playbook`, which a remote HCP
-  Terraform execution sandbox can't reach.
+  workspace `infragraph-demo-day2-rotation` in org `Devopstronaut`, with **Execution Mode set
+  to Local**: the Action shells out to `ansible-playbook`, which a remote HCP Terraform
+  execution sandbox can't reach. Verified live: Local execution mode means HCP Terraform
+  **does not track this as a Run** -- the Runs tab stays permanently empty for this
+  workspace (`"total-count": 0` via the API, confirmed after several real applies), because
+  Local mode is a pure state backend ("HCP Terraform only stores and synchronizes state," per
+  the execution-mode picker's own description) -- it's not a UI bug, it's what the setting
+  means. What *does* update is the **State** tab (new serial number per apply); the apply
+  output itself only ever streams in your own terminal, not the web UI.
 - **Vault** is HCP Vault Dedicated (`terraform/vault-hcp/`), not a local container -- a real,
   billed-hourly cluster provisioned by its own `cloud`-backed workspace
   (`infragraph-demo-vault`).

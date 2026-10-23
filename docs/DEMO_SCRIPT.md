@@ -260,11 +260,19 @@ terraform apply -var="security_group_id=<sg id from dev output>"
 
 The `cloud` block in `actions.tf` points this at workspace
 `infragraph-demo-day2-rotation` in org `Devopstronaut` - `terraform init`
-here authenticates to that workspace, and `terraform apply` creates a real,
-visible run there (not local state). Because the workspace's Execution Mode
-is set to Local, the plan/apply itself still runs on your laptop - so flip
-over to the HCP Terraform UI during the apply and show the run streaming in
-from your machine.
+here authenticates to that workspace. **Correction, verified live**: with
+Execution Mode = Local, HCP Terraform doesn't track this as a Run at all -
+"Local" means it's a pure state backend (the project settings page says so
+outright: "HCP Terraform only stores and synchronizes state"), so there's
+nothing streaming to the UI and no entry in the workspace's Runs tab,
+ever, by design - not a bug, not something to troubleshoot on stage. Don't
+narrate "watch this show up in the HCP Terraform UI" for this apply. What
+genuinely does update in HCP Terraform is the **State** tab (the
+`terraform_data.trigger_anchor` resource's state, new serial number each
+apply) - that's the one honest "this really talked to HCP Terraform" proof
+point available here. The actual visible apply output is what's already
+streaming in your own terminal; that's the real narration surface for this
+step, not the web UI.
 
 Narrate: this is a credential-rotation runbook that used to be a wiki page -
 now it's a Terraform Action (`actions.tf`), version-controlled, peer-reviewed,
