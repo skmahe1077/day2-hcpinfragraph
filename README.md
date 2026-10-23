@@ -268,8 +268,14 @@ provisions a real HCP Vault Dedicated cluster, billed hourly from the moment it'
 **Run `scripts/destroy.sh` as soon as the demo/rehearsal is done.** It tears down the
 day2-rotation state and the HCP Vault Dedicated cluster (priority teardown -- that's the one
 billing hourly), then removes the tagged out-of-band shadow resources. The Stacks-managed
-`staging`/`prod` deployments aren't covered by this script -- destroy those from the HCP
-Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal.
+`dev`/`staging`/`prod` deployments aren't covered by this script -- destroy **each deployment**
+from the HCP Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal.
+
+**Destroy the deployments before deleting the Stack itself, never the other way round.**
+Deleting the Stack object does not destroy its deployments first -- doing it in the wrong
+order orphans the real `dev`/`staging`/`prod` EC2 instances and security groups with zero
+Terraform tracking left anywhere (no Stack, no state), and they'll keep running/billing until
+someone finds and deletes them manually via the AWS console/CLI. Hit this for real once.
 
 ## Layout
 

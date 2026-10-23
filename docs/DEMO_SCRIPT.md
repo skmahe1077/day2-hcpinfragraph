@@ -362,6 +362,12 @@ cd ../../
 
 This destroys the day2-rotation state and the **HCP Vault Dedicated
 cluster** (the cluster bills hourly from creation, so don't let it sit
-overnight) plus the out-of-band shadow resources. Then destroy the
-`staging`/`prod` Stacks deployments from the HCP Terraform UI if you applied
-them during rehearsal.
+overnight) plus the out-of-band shadow resources. Then destroy **every**
+Stacks deployment (`dev` included, not just `staging`/`prod`) from the HCP
+Terraform UI if you applied them during rehearsal - **in that order, before
+touching the Stack object itself**. Deleting the Stack first does not destroy
+its deployments - it just deletes the thing that was tracking them, leaving
+the real `dev`/`staging`/`prod` EC2 instances and security groups orphaned
+(no Stack, no state, nothing managing them) and still running/billing. If
+that happens, the only recovery is finding and terminating them by hand via
+AWS CLI/console.
