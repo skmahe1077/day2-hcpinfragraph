@@ -32,7 +32,7 @@ org -- not a sandboxed local-only walkthrough.
 
 ## Architecture
 
-![Architecture diagram: GitHub repo connected to HCP Terraform (org Devopstronaut, Stacks + Workspaces + Infragraph graph), which pulls a golden AMI from HCP Packer and drives dev/staging/prod EC2 + Security Groups in AWS eu-west-1; HCP Vault Dedicated and Ansible rotate the webapp DB credential and push it to those instances; a separate untracked Shadow IT box (EC2, Security Group, S3) discovered live by Terraform Search (terraform query) and also surfaced in the Infragraph resource inventory](docs/images/architecture.png)
+![Architecture diagram: GitHub repo connected to HCP Terraform (org Devopstronaut, Stacks + Workspaces + Infragraph graph), which pulls a golden AMI from HCP Packer and drives dev/staging/prod EC2 + Security Groups in AWS eu-west-1; a dev-SG-change triggers the day2-rotation Action, which rotates a credential in HCP Vault Dedicated and has Ansible push it to all three environments; a separate Terraform Search workspace (infragraph-demo-search-shadow) discovers an untracked Shadow IT box (EC2, Security Group, S3) live by tag, also surfaced separately in the Infragraph resource inventory](docs/images/architecture.png)
 
 <details>
 <summary>Mermaid source (text fallback)</summary>
