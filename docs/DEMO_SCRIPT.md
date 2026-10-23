@@ -190,6 +190,16 @@ is the output - review it, drop it into your config, `terraform apply`, and
 that shadow resource is governed." Don't actually run that apply live unless
 you want to - it would also need `destroy.sh`'s shadow-resource cleanup path
 reworked, since that currently deletes by AWS tag, not Terraform state.
+
+**If you do want to actually `terraform plan`/`apply` the generated file**: the
+AWS provider's generated config isn't always directly valid - it can emit
+mutually-exclusive computed arguments together. The two conflicts we hit:
+`ipv6_address_count` vs `ipv6_addresses` (delete the `ipv6_address_count`
+line), and the `primary_network_interface { ... }` block vs
+`associate_public_ip_address` (delete the whole `primary_network_interface`
+block). Both are narration-worthy as-is - "generated config is a starting
+point, review before you trust it" is a fair point to make live - but if you
+want a clean `terraform plan` on stage, make those two edits first.
 `cd ../..` back to the repo root when done.
 
 If you'd rather not touch real Terraform Search live, `shadow_vs_managed_diff.sh`
