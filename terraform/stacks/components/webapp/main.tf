@@ -55,6 +55,10 @@ resource "aws_security_group" "webapp" {
   }
 
   tags = local.tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_instance" "webapp" {
