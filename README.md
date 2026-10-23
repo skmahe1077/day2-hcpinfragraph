@@ -43,6 +43,7 @@ flowchart TB
         Stack["Stacks\ncomponent: webapp\ndeployments: dev / staging / prod"]
         ActionWS["Workspace: infragraph-demo-day2-rotation\nExecution Mode: Local"]
         VaultWS["Workspace: infragraph-demo-vault"]
+        SearchWS["Workspace: infragraph-demo-search-shadow\nTerraform Search (terraform query) -\nindependent of Infragraph"]
         Infragraph["Infragraph graph view\nowner + policy + ops context"]
     end
 
@@ -67,10 +68,13 @@ flowchart TB
     ActionWS -->|after_update action_trigger\n(verified live) or direct script| Vault
     Vault -->|rotated credential| Ansible
     Ansible -->|pushes credential over SSH,\nreal httpd restart,\nrenders live dashboard| Dev
+    Ansible -->|same push| Staging
+    Ansible -->|same push| Prod
 
     VaultWS -.->|provisions + admin token| Vault
 
-    Shadow -. "unmanaged -- no owning workspace" .-> Infragraph
+    SearchWS -->|terraform query\ndiscovers by tag, live| Shadow
+    Shadow -. "unmanaged -- also surfaced\nin Infragraph inventory" .-> Infragraph
     Stack -.-> Infragraph
     Packer -.-> Infragraph
     ActionWS -.-> Infragraph
