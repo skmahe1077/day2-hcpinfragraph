@@ -22,7 +22,12 @@ data "aws_subnets" "default" {
 }
 
 resource "aws_security_group" "webapp" {
-  name        = "${local.name}-sg"
+  # Renamed (sg -> sg-v2) to deliberately force replacement: this changes
+  # the SG's id, which is what terraform/day2-rotation's trigger_anchor
+  # tracks - this is how we fire the real after_update action_trigger for
+  # the Day 2 rotation Action on stage, instead of only ever invoking the
+  # underlying script directly.
+  name        = "${local.name}-sg-v2"
   description = "Standardized webapp SG issued by Stacks - ${var.environment}"
   vpc_id      = data.aws_vpc.default.id
 
