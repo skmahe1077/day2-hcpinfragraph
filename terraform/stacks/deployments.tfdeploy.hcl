@@ -38,7 +38,7 @@ deployment "dev" {
     environment            = "dev"
     instance_type          = "t3.micro"
     owner                  = "platform-team"
-    ssh_cidr               = "82.33.90.77/32"
+    ssh_cidr               = "74.174.50.160/32"
     aws_access_key_id      = store.varset.provider_creds.AWS_ACCESS_KEY_ID
     aws_secret_access_key  = store.varset.provider_creds.AWS_SECRET_ACCESS_KEY
     hcp_client_id          = store.varset.provider_creds.HCP_CLIENT_ID
@@ -53,7 +53,7 @@ deployment "staging" {
     environment            = "staging"
     instance_type          = "t3.small"
     owner                  = "platform-team"
-    ssh_cidr               = "82.33.90.77/32"
+    ssh_cidr               = "74.174.50.160/32"
     aws_access_key_id      = store.varset.provider_creds.AWS_ACCESS_KEY_ID
     aws_secret_access_key  = store.varset.provider_creds.AWS_SECRET_ACCESS_KEY
     hcp_client_id          = store.varset.provider_creds.HCP_CLIENT_ID
@@ -68,7 +68,7 @@ deployment "prod" {
     environment            = "prod"
     instance_type          = "t3.medium"
     owner                  = "platform-team"
-    ssh_cidr               = "82.33.90.77/32"
+    ssh_cidr               = "74.174.50.160/32"
     aws_access_key_id      = store.varset.provider_creds.AWS_ACCESS_KEY_ID
     aws_secret_access_key  = store.varset.provider_creds.AWS_SECRET_ACCESS_KEY
     hcp_client_id          = store.varset.provider_creds.HCP_CLIENT_ID
