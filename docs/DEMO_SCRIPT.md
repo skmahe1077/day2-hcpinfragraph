@@ -362,12 +362,33 @@ cd ../../
 
 This destroys the day2-rotation state and the **HCP Vault Dedicated
 cluster** (the cluster bills hourly from creation, so don't let it sit
-overnight) plus the out-of-band shadow resources. Then destroy **every**
-Stacks deployment (`dev` included, not just `staging`/`prod`) from the HCP
-Terraform UI if you applied them during rehearsal - **in that order, before
-touching the Stack object itself**. Deleting the Stack first does not destroy
-its deployments - it just deletes the thing that was tracking them, leaving
-the real `dev`/`staging`/`prod` EC2 instances and security groups orphaned
-(no Stack, no state, nothing managing them) and still running/billing. If
-that happens, the only recovery is finding and terminating them by hand via
-AWS CLI/console.
+overnight) plus the out-of-band shadow resources. It does not touch the
+Stacks-managed `dev`/`staging`/`prod` deployments.
+
+**The HCP Terraform UI can no longer destroy a Stack deployment directly**
+(this changed 2026-04-04). The current way: add `destroy = true` to each
+`deployment` block in `terraform/stacks/deployments.tfdeploy.hcl`, commit,
+and push. `dev`/`staging` auto-approve (the `non_prod` deployment group);
+`prod` still needs manual approval like a normal apply. Destroy **every**
+deployment (`dev` included, not just `staging`/`prod`) **in that order,
+before touching the Stack object itself** - deleting the Stack first does
+not destroy its deployments, it just deletes the thing that was tracking
+them, leaving the real `dev`/`staging`/`prod` EC2 instances and security
+groups orphaned (no Stack, no state, nothing managing them) and still
+running/billing.
+
+Hit a second version of this failure for real: pushing the `destroy = true`
+commit made the Stack vanish from the org entirely (404 on the Stack ID,
+empty on the org's stacks list) within seconds - before any destroy run
+could be confirmed complete. The org audit-trail API came back with zero
+events for that window and the GitHub webhook delivery log only showed a
+generic ack, so there was no way to retrieve what actually happened inside
+HCP Terraform. Same orphaned-EC2-instances outcome either way, and the same
+fix: find the instances and security groups by ID via `aws ec2
+describe-instances`/`describe-security-groups` and remove them by hand
+(`terminate-instances`, then `delete-security-group` once each instance
+shows `terminated`).
+
+**Always verify against AWS directly after any Stack teardown step** -
+don't trust the Stack's own UI/API state as proof the real resources are
+gone. The two can and did diverge.

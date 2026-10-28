@@ -268,14 +268,36 @@ provisions a real HCP Vault Dedicated cluster, billed hourly from the moment it'
 **Run `scripts/destroy.sh` as soon as the demo/rehearsal is done.** It tears down the
 day2-rotation state and the HCP Vault Dedicated cluster (priority teardown -- that's the one
 billing hourly), then removes the tagged out-of-band shadow resources. The Stacks-managed
-`dev`/`staging`/`prod` deployments aren't covered by this script -- destroy **each deployment**
-from the HCP Terraform UI (Stacks -> destroy deployment) if you applied them during rehearsal.
+`dev`/`staging`/`prod` deployments aren't covered by this script.
+
+**Destroying Stack deployments from the HCP Terraform UI stopped working on 2026-04-04** --
+HCP Terraform no longer lets you destroy a deployment as a UI action. Destroy is now modeled
+in config: add `destroy = true` to each `deployment` block in
+`terraform/stacks/deployments.tfdeploy.hcl`, commit, and push. `dev`/`staging` auto-approve
+(they're in the `non_prod` deployment group); `prod` still needs a manual approval, same as a
+normal apply. Destroy `dev` and `staging` first, `prod` last, and confirm (via the HCP
+Terraform UI or API, or just `aws ec2 describe-instances`) that all three actually finished
+destroying **before** touching the Stack object itself.
 
 **Destroy the deployments before deleting the Stack itself, never the other way round.**
 Deleting the Stack object does not destroy its deployments first -- doing it in the wrong
 order orphans the real `dev`/`staging`/`prod` EC2 instances and security groups with zero
 Terraform tracking left anywhere (no Stack, no state), and they'll keep running/billing until
 someone finds and deletes them manually via the AWS console/CLI. Hit this for real once.
+
+**Second real incident, same failure mode, different trigger:** pushing the `destroy = true`
+commit above made the Stack object itself disappear from the org (`GET` on its ID and on
+`GET .../organizations/:org/stacks` both came back empty) within seconds of the push --
+before any destroy run could be confirmed complete. The org audit-trail API
+(`/api/v2/organization/audit-trail`) returned zero events for the window, and the GitHub ->
+HCP Terraform webhook delivery log only showed a generic `200 OK` ack, so there's no retrievable
+trace of what actually happened inside HCP Terraform. Net effect was identical to the first
+incident: `dev`/`staging`/`prod` EC2 instances + their security groups left running with no
+Stack and no state anywhere. Recovery was the same manual path -- `aws ec2 terminate-instances`
+on the three instance IDs, then `aws ec2 delete-security-group` on their (dedicated, one-per-
+instance) SGs, then re-verify with `describe-instances` and the Stacks API that nothing's left.
+**Lesson: always verify the AWS side directly after any Stack teardown action, don't trust the
+Stack UI/API's own state as proof the real resources are gone -- the two can diverge.**
 
 ## Layout
 
