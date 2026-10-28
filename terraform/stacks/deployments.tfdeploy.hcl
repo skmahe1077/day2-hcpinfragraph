@@ -45,6 +45,7 @@ deployment "dev" {
     hcp_client_secret      = store.varset.provider_creds.HCP_CLIENT_SECRET
   }
   deployment_group = deployment_group.non_prod
+  destroy          = true
 }
 
 deployment "staging" {
@@ -60,6 +61,7 @@ deployment "staging" {
     hcp_client_secret      = store.varset.provider_creds.HCP_CLIENT_SECRET
   }
   deployment_group = deployment_group.non_prod
+  destroy          = true
 }
 
 deployment "prod" {
@@ -74,4 +76,5 @@ deployment "prod" {
     hcp_client_id          = store.varset.provider_creds.HCP_CLIENT_ID
     hcp_client_secret      = store.varset.provider_creds.HCP_CLIENT_SECRET
   }
+  destroy = true
 }
